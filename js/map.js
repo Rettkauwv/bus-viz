@@ -7,6 +7,8 @@ const map = new mapboxgl.Map({
   // hash: true,
 });
 
+const minuteRate = 1000
+
 function getRandomColor() {
   var letters = '0123456789ABCDEF';
   var color = '#';
@@ -16,21 +18,34 @@ function getRandomColor() {
   return color;
 }
 
-
 // add the zoom/rotate/pitch control to the map
 map.addControl(new mapboxgl.NavigationControl());
 
 map.on('style.load', () => {
 
-  map.addSource('b67-route', {
+  map.addSource('b67-route-northbound', {
     type: 'geojson',
-    data: 'data/b67-route-linestring.geojson'
+    data: 'data/b67-route-northbound.geojson'
   })
 
   map.addLayer({
-    id: 'b67-route-line',
+    id: 'b67-route-northbound-line',
     type: 'line',
-    source: 'b67-route',
+    source: 'b67-route-northbound',
+    paint: {
+      'line-color': '#aaa'
+    }
+  })
+
+  map.addSource('b67-route-southbound', {
+    type: 'geojson',
+    data: 'data/b67-route-southbound.geojson'
+  })
+
+  map.addLayer({
+    id: 'b67-route-southbound-line',
+    type: 'line',
+    source: 'b67-route-southbound',
     paint: {
       'line-color': '#aaa'
     }
@@ -64,11 +79,15 @@ const renderVehicles = (timestamps, data, timestampCounter) => {
   const currentMoment = moment.unix(currentTimestamp)
   // get rows for this timestamp
   const observationsForTimestamp = data.filter(d => d.timestamp === currentTimestamp)
+  const observationsForNextTimestamp = data.filter(d => {
+    return d.timestamp === timestamps[timestampCounter + 1]
+  })
 
   // remove sources and layers for non-reporting sources
   let sourcesOnMap = Object.keys(map.getStyle().sources)
     .filter(d => d.match(/MTA/))
 
+  // iterate over observations for this timestamp
   observationsForTimestamp.forEach((observation) => {
     // remove this id from sourcesOnMap so we know which ones are missing later
     sourcesOnMap = sourcesOnMap.filter(d => d !== observation.vehicleRef)
@@ -86,6 +105,8 @@ const renderVehicles = (timestamps, data, timestampCounter) => {
           ]
         }
       })
+
+      map.setPaintProperty(`${observation.vehicleRef}-circle`, 'circle-color', observation.directionRef === '0' ? 'blue' : 'green');
     } else {
       map.addSource(observation.vehicleRef, {
         type: 'geojson',
@@ -106,11 +127,47 @@ const renderVehicles = (timestamps, data, timestampCounter) => {
         type: 'circle',
         source: observation.vehicleRef,
         paint: {
-          'circle-color': getRandomColor()
+          'circle-color': observation.directionRef === '0' ? 'blue' : 'green'
         }
       })
     }
+
+    // interpolate position along string
+    const startPosition = [observation.longitude, observation.latitude]
+    const nextObservation = observationsForNextTimestamp.find(d => d.vehicleRef === observation.vehicleRef)
+    if (nextObservation) {
+      const endPosition = [nextObservation.longitude, nextObservation.latitude]
+
+
+      const frames = 15
+
+      const interval = minuteRate / frames
+
+      const lineBetweenPoints = turf.lineString([startPosition, endPosition])
+      const incrementLength = turf.length(lineBetweenPoints) / frames
+
+      let counter = 1
+      const dataInterval = setInterval(() => {
+        updateData(lineBetweenPoints, incrementLength, counter, frames, observation.vehicleRef)
+        if (counter === frames - 1) {
+          clearInterval(dataInterval)
+        } else {
+          counter += 1;
+        }
+      }, interval)
+    }
   })
+
+  // update data for one frame
+  const updateData = (line, incrementLength, counter, frames, sourceId) => {
+    // length to visualize for this frame
+    const frameLength = incrementLength * counter;
+
+    // calculate where to place the marker
+    const pointAlong = turf.along(line, frameLength);
+
+    map.getSource(sourceId).setData(pointAlong);
+  }
 
   // remove orphaned sources
   sourcesOnMap.forEach((id) => {
@@ -124,11 +181,13 @@ const renderVehicles = (timestamps, data, timestampCounter) => {
     setTimeout(() => {
       timestampCounter += 1
       renderVehicles(timestamps, data, timestampCounter)
-    }, 1000)
+    }, minuteRate)
   }
 }
 
 const startAnimation = (data) => {
+  // // filter for dev only
+  // data = data.filter(d => d.vehicleRef === 'MTA NYCT_381')
   // get all of the unique timestamps
   const timestamps = data
     .map(d => d.timestamp)
