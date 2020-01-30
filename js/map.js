@@ -62,23 +62,45 @@ const asJson = (csv) => {
   })
 }
 
+const getMphColor = (mph) => {
+  if (mph >= 10) return '#33cc33'
+  if (mph > 5) return '#ff9900'
+  if (mph > 0) return '#cc0000'
+}
+
+// update data for one frame
+const updateData = (line, incrementLength, counter, framesPerMinute, sourceId) => {
+  // length to visualize for this frame
+  const frameLength = incrementLength * counter;
+
+  // calculate where to place the marker
+  const pointAlong = turf.along(line, frameLength);
+
+  map.getSource(sourceId).setData(pointAlong);
+}
+
 
 
 // renderVehicles will animate vehicles between their current position and their next position
 // once done, it calls itself until reaching the end of the data
 const renderVehicles = (timestamps, data, timestampCounter) => {
-  // how many milliseconds === 1 minute in real life
-  const minuteRate = 5000
+  // The markers on the map will update {framesPerMinute} times over {minuteRate}
+  const minuteRate = 2000
+  const framesPerMinute = 30
 
   const currentTimestamp = timestamps[timestampCounter]
   const currentMoment = moment.unix(currentTimestamp)
+  $('.display-time').text(currentMoment.format('HH:mm'))
+
   // get rows for this timestamp
   const observationsForTimestamp = data.filter(d => d.timestamp === currentTimestamp)
   const observationsForNextTimestamp = data.filter(d => {
     return d.timestamp === timestamps[timestampCounter + 1]
   })
 
-  // remove sources and layers for non-reporting sources
+  // get all vehicle sources.  As we iterate we will check off the ones that
+  // are still reporting, leaving an array of non-reporting vehicles
+  // any that are left will be removed
   let sourcesOnMap = Object.keys(map.getStyle().sources)
     .filter(d => d.match(/MTA/))
 
@@ -101,7 +123,6 @@ const renderVehicles = (timestamps, data, timestampCounter) => {
         }
       })
 
-      map.setPaintProperty(`${observation.vehicleRef}-circle`, 'circle-color', observation.directionRef === '0' ? 'blue' : 'green');
     } else {
       map.addSource(observation.vehicleRef, {
         type: 'geojson',
@@ -120,10 +141,7 @@ const renderVehicles = (timestamps, data, timestampCounter) => {
       map.addLayer({
         id: `${observation.vehicleRef}-circle`,
         type: 'circle',
-        source: observation.vehicleRef,
-        paint: {
-          'circle-color': observation.directionRef === '0' ? 'blue' : 'green'
-        }
+        source: observation.vehicleRef
       })
     }
 
@@ -133,21 +151,26 @@ const renderVehicles = (timestamps, data, timestampCounter) => {
     if (nextObservation) {
       const endPosition = [nextObservation.longitude, nextObservation.latitude]
 
+      // now that we have the end position, we can calculate the average speed
+      // for this minute as distance between points / 1 minute * 60 = mph
+      const distanceBetweenPoints = turf.distance(startPosition, endPosition, { units: 'miles' })
+      const mph = parseInt(distanceBetweenPoints * 60)
+      // update the layer
+      map.setPaintProperty(`${observation.vehicleRef}-circle`, 'circle-color', getMphColor(mph));
 
-      const frames = 15
 
-      const interval = minuteRate / frames
+      const interval = minuteRate / framesPerMinute
 
       const lineBetweenPoints = turf.lineString([startPosition, endPosition])
-      const incrementLength = turf.length(lineBetweenPoints) / frames
+      const incrementLength = turf.length(lineBetweenPoints) / framesPerMinute
 
-      // create an interval to update the data {frames} times
+      // create an interval to update the data {framesPerMinute} times
       // we already rendered the initial position, so kick things off at 1, not 0
       let counter = 1
       const dataInterval = setInterval(() => {
-        updateData(lineBetweenPoints, incrementLength, counter, frames, observation.vehicleRef)
+        updateData(lineBetweenPoints, incrementLength, counter, framesPerMinute, observation.vehicleRef)
         // the end position is just the 0 position of the next timestamp, so we are iterating over n-2
-        if (counter === frames - 1) {
+        if (counter === framesPerMinute - 1) {
           clearInterval(dataInterval)
         } else {
           counter += 1;
@@ -155,17 +178,6 @@ const renderVehicles = (timestamps, data, timestampCounter) => {
       }, interval)
     }
   })
-
-  // update data for one frame
-  const updateData = (line, incrementLength, counter, frames, sourceId) => {
-    // length to visualize for this frame
-    const frameLength = incrementLength * counter;
-
-    // calculate where to place the marker
-    const pointAlong = turf.along(line, frameLength);
-
-    map.getSource(sourceId).setData(pointAlong);
-  }
 
   // remove orphaned layers and sources
   sourcesOnMap.forEach((id) => {
@@ -175,7 +187,7 @@ const renderVehicles = (timestamps, data, timestampCounter) => {
   })
 
   // move to the next frame after {minuteRate}, which should be the same amount
-  // of time needed to animate {frames} frames
+  // of time needed to animate {framesPerMinute} frames
   if (timestampCounter < timestamps.length - 2 ) {
     setTimeout(() => {
       timestampCounter += 1
