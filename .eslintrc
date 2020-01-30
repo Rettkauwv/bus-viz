@@ -1,0 +1,11 @@
+{
+  "extends": "standard",
+  "globals": {
+    "$": true,
+    "mapboxgl": true,
+    "map": true,
+    "moment": true,
+    "turf": true,
+    "Papa": true
+  }
+}
