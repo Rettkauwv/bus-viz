@@ -116,6 +116,9 @@ const renderVehicles = (timestamps, data, timestampCounter) => {
     renderMarkersForVehicle(vehicle, 0)
   })
 
+  // refreshChart(dataToAnimate, currentTimestamp)
+  updateLine(currentTimestamp)
+
   // create an interval to update the data {framesPerMinute} times
   // we already rendered the initial position, so kick things off at 1, not 0
   let counter = 1

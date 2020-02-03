@@ -2,6 +2,7 @@
   "extends": "standard",
   "globals": {
     "$": true,
+    "d3": true,
     "mapboxgl": true,
     "map": true,
     "moment": true,
