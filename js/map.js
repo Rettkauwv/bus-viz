@@ -54,7 +54,7 @@ map.on('style.load', () => {
   })
 
   // parse vehicles csv, convert to json, and kick off the animation
-  Papa.parse('/data/vehicles.csv', {
+  Papa.parse('data/vehicles.csv', {
     download: true,
     complete: ({ data }) => {
       const json = asJson(data)
@@ -63,41 +63,13 @@ map.on('style.load', () => {
   })
 
   // parse stops csv, convert to json
-  Papa.parse('/data/stops.csv', {
+  Papa.parse('data/stops.csv', {
     download: true,
     complete: ({ data }) => {
       const json = asJson(data)
 
-      const someStopData = json.filter(d => d.stopId === '305674')
-      console.log(someStopData)
-
-      // var stopLine = d3.line()
-      //   .x(function (d) { return x(d.timestamp * 1000) })
-      //   .y(function (d) {
-      //     console.log(d.expectedArrivalSeconds)
-      //     console.log(Math.abs(d.expectedArrivalSeconds) / 60)
-      //     return y((Math.abs(d.expectedArrivalSeconds) / 60))
-      //   })
-      //   .curve(d3.curveMonotoneX)
-      // clear the chart
-      svg.selectAll('.bus-line').remove()
-
-      // // draw new lines
-      // svg.append('path')
-      //   .datum(someStopData)
-      //   .attr('class', 'stop-line')
-      //   .attr('d', stopLine)
-
-      // append the bar rectangles to the svg element
-      svg.selectAll('rect')
-        .data(someStopData)
-        .enter()
-        .append('rect')
-        .attr('x', function (d) { return x(d.timestamp * 1000) })
-        .attr('y', function (d) { return y(Math.abs(d.expectedArrivalSeconds) / 60)})
-        .attr('width', (width / 180) + 1)
-        .attr('height', function (d) { return height - y(Math.abs(d.expectedArrivalSeconds) / 60) })
-        .style('fill', '#69b3a2')
+      window.stopData = json
+      renderStopList()
     }
   })
 })
